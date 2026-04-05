@@ -6,41 +6,34 @@ import ProductGrid from './features/catalog/ProductGrid';
 import CartDrawer from './features/cart/CartDrawer';
 import PaymentPage from './features/checkout/PaymentPage';
 import AuthPage from './features/auth/AuthPage';
+import { ShoppingCart } from 'lucide-react';
 import type { Product, CartItem } from './types/product';
 
 function App() {
- 
-  const [userEmail, setUserEmail] = useState(() => {
-    return localStorage.getItem('zando_user_email') || '';
-  });
+  // --- AUTH & PERSISTENCE ---
+  const [userEmail, setUserEmail] = useState(() => localStorage.getItem('zando_user_email') || '');
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('zando_user_email'));
 
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return !!localStorage.getItem('zando_user_email');
-  });
-
- 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  // --- STORE & TOAST STATE ---
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [view, setView] = useState<'store' | 'payment'>('store');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  
+  // New Toast State
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
-  // --- HANDLERS ---
   const handleLogin = (email: string) => {
     setUserEmail(email);
     setIsLoggedIn(true);
-    // Save to browser storage
     localStorage.setItem('zando_user_email', email);
   };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
-    setUserEmail('');
-    setCartItems([]); 
-    // Remove from browser storage
     localStorage.removeItem('zando_user_email');
-    setView('store');
   };
 
   const handleAddToCart = (product: Product) => {
@@ -53,43 +46,21 @@ function App() {
       }
       return [...prev, { ...product, quantity: 1 }];
     });
+
+    // TRIGGER POPUP
+    setToastMessage(`${product.name} added!`);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2500);
   };
 
-  const handleUpdateQuantity = (id: string, delta: number) => {
-    setCartItems((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const newQty = item.quantity + delta;
-          return { ...item, quantity: newQty < 1 ? 1 : newQty };
-        }
-        return item;
-      })
-    );
-  };
-
-  const handleRemoveFromCart = (id: string) => {
-    setCartItems((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const handlePaymentSuccess = () => {
-    alert(`🎉 Success! Confirmation sent to ${userEmail}`);
-    setCartItems([]);
-    setView('store');
-  };
-
-  const totalUnits = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-
-  // --- AUTH SHIELD ---
-  if (!isLoggedIn) {
-    return <AuthPage onLogin={handleLogin} />;
-  }
+  if (!isLoggedIn) return <AuthPage onLogin={handleLogin} />;
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 flex flex-col relative overflow-x-hidden font-sans">
+    <div className="min-h-screen bg-gray-100 flex flex-col relative overflow-x-hidden">
       <Navbar 
         searchTerm={searchTerm} 
         setSearchTerm={setSearchTerm} 
-        cartCount={totalUnits} 
+        cartCount={cartItems.reduce((acc, item) => acc + item.quantity, 0)} 
         onCartClick={() => setIsCartOpen(true)} 
         userEmail={userEmail}
         onLogout={handleLogout}
@@ -99,36 +70,40 @@ function App() {
         isOpen={isCartOpen} 
         onClose={() => setIsCartOpen(false)} 
         items={cartItems} 
-        onUpdateQuantity={handleUpdateQuantity}
-        onRemove={handleRemoveFromCart}
+        onUpdateQuantity={(id, d) => setCartItems(prev => prev.map(i => i.id === id ? {...i, quantity: Math.max(1, i.quantity + d)} : i))}
+        onRemove={(id) => setCartItems(prev => prev.filter(i => i.id !== id))}
         onCheckout={() => { setIsCartOpen(false); setView('payment'); }} 
       />
 
-      {view === 'store' ? (
-        <main className="container mx-auto p-2 md:p-4 max-w-7xl flex flex-col lg:flex-row gap-4 flex-1">
-          <Sidebar selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
-          <div className="flex-1">
+      <main className="container mx-auto p-4 flex-1">
+        {view === 'store' ? (
+          <div className="flex flex-col lg:flex-row gap-4">
+            <Sidebar selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
             <ProductGrid 
               searchTerm={searchTerm} 
-              sortBy={sortBy} 
-              setSortBy={setSortBy} 
               onAddToCart={handleAddToCart}
               selectedCategory={selectedCategory}
+              setSortBy={() => {}} // Placeholder
+              sortBy="newest"
             />
           </div>
-        </main>
-      ) : (
-        <main className="container mx-auto p-4 flex-1">
-          <PaymentPage 
-            items={cartItems} 
-            onBack={() => setView('store')}
-            onSuccess={handlePaymentSuccess}
-          />
-        </main>
+        ) : (
+          <PaymentPage items={cartItems} onBack={() => setView('store')} onSuccess={() => { alert("Paid!"); setCartItems([]); setView('store'); }} />
+        )}
+      </main>
+
+      {/* --- FLOATING TOAST POPUP --- */}
+      {showToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-100 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-[#282828] text-white px-6 py-3 rounded-full shadow-2xl border border-[#f89c20] flex items-center gap-3">
+            <ShoppingCart size={16} className="text-[#f89c20]" />
+            <span className="text-[10px] font-black uppercase tracking-widest">{toastMessage}</span>
+          </div>
+        </div>
       )}
 
-      <footer className="py-8 bg-white border-t text-center text-gray-400 text-[10px] uppercase tracking-widest mt-auto">
-        <p>&copy; 2026 ZANDO Marketplace | User: {userEmail}</p>
+      <footer className="p-8 text-center text-gray-400 text-[10px] uppercase tracking-widest">
+        &copy; 2026 ZANDO NIGERIA
       </footer>
     </div>
   );
